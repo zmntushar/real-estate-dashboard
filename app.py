@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -65,7 +64,8 @@ def _theme_picker() -> None:
 
     # Idempotent: only touches storage and reloads when the value differs,
     # so this cannot loop. A failure here simply leaves the theme unchanged.
-    components.html(
+    # st.components.v1.html was removed after 2026-06-01; st.iframe replaces it.
+    st.iframe(
         f"""
         <script>
         (function () {{
@@ -89,7 +89,9 @@ def _theme_picker() -> None:
         }})();
         </script>
         """,
-        height=0,
+        # The iframe renders nothing - it only runs the script - so let it
+        # collapse rather than reserving a strip of blank sidebar.
+        height="content",
     )
 
 
