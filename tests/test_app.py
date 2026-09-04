@@ -391,3 +391,81 @@ def test_crime_handles_an_empty_response(monkeypatch) -> None:
     monkeypatch.setattr(fbi, "cached_json", lambda *a, **k: {"offenses": {}})
     fbi.state_rates.clear()
     assert fbi.state_rates("TX", "violent-crime", "dummy-key") is None
+
+
+# --- search history --------------------------------------------------------
+def _entry(query: str, label: str | None = None, level: str = "City"):
+    from redash import history
+
+    return history.Entry(query=query, label=label or query, level=level,
+                         at="2026-01-01T00:00:00")
+
+
+def test_history_is_newest_first_and_deduplicated() -> None:
+    from redash import history
+
+    entries: list = []
+    for q in ("Austin, TX", "02138", "Detroit, MI", "Austin, TX"):
+        entries = history.remember(entries, _entry(q))
+
+    assert [e.query for e in entries] == ["Austin, TX", "Detroit, MI", "02138"]
+
+
+def test_history_dedupe_ignores_case_and_respects_the_cap() -> None:
+    from redash import history
+
+    entries = history.remember([], _entry("Austin, TX"))
+    entries = history.remember(entries, _entry("austin, tx"))
+    assert len(entries) == 1
+
+    entries = []
+    for i in range(history.MAX_ENTRIES + 6):
+        entries = history.remember(entries, _entry(f"City {i}, TX"))
+    assert len(entries) == history.MAX_ENTRIES
+    assert entries[0].query == f"City {history.MAX_ENTRIES + 5}, TX"
+
+
+def test_history_round_trips_through_disk(tmp_path) -> None:
+    from redash import history
+
+    path = tmp_path / "search_history.json"
+    entries = [_entry("Austin, TX"), _entry("02138", "02138 - Cambridge, MA", "Zip")]
+    history.save(entries, path)
+
+    loaded = history.load(path)
+    assert [e.query for e in loaded] == ["Austin, TX", "02138"]
+    assert loaded[1].label == "02138 - Cambridge, MA"
+    assert loaded[1].level == "Zip"
+
+    history.clear(path)
+    assert not path.exists()
+    assert history.load(path) == []
+
+
+def test_history_survives_a_corrupt_file(tmp_path) -> None:
+    """A damaged file must not take the whole app down with it."""
+    from redash import history
+
+    path = tmp_path / "search_history.json"
+    for junk in ("{ not json", "[]", '{"query": "x"}', '[{"nothing": 1}]'):
+        path.write_text(junk, encoding="utf-8")
+        assert history.load(path) == []
+
+
+def test_history_stores_cities_with_their_state() -> None:
+    """A bare city name is ambiguous, so replaying one has to carry the state."""
+    from redash import geo, history
+
+    city = geo.build_region(geo.search_regions("Austin, TX").iloc[0])
+    entry = history.canonical(city)
+    assert entry.query == "Austin, TX"
+    assert entry.level == "City"
+
+    # Replaying the stored query must land on the same place.
+    again = geo.build_region(geo.search_regions(entry.query).iloc[0])
+    assert again.region_id == city.region_id
+
+    zipped = geo.build_region(geo.search_regions("02138").iloc[0])
+    zip_entry = history.canonical(zipped)
+    assert zip_entry.query == "02138"
+    assert "Cambridge" in zip_entry.label

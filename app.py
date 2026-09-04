@@ -16,7 +16,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from redash import refresh  # noqa: E402
+from redash import history, refresh  # noqa: E402
 from redash.cache import cache_stats, clear_cache  # noqa: E402
 from redash.config import APP_ICON, APP_TITLE, GEO_LABEL  # noqa: E402
 from redash.geo import build_region, search_regions  # noqa: E402
@@ -39,8 +39,67 @@ st.markdown("""
 
 DEFAULT_QUERY = "Austin, TX"
 THEME_CHOICES = ["System", "Light", "Dark"]
+RECENT_SHOWN = 6  # how many of the stored searches the sidebar lists
 EXAMPLES = ["Austin, TX", "Detroit, MI", "Boise, ID", "Pittsburgh, PA",
             "02138", "90210"]
+
+
+def _load_history() -> list[history.Entry]:
+    """Session-cached view of the history file."""
+    if "history" not in st.session_state:
+        st.session_state["history"] = history.load()
+    return st.session_state["history"]
+
+
+def _remember(region) -> None:
+    """Record a search once, when it lands somewhere new.
+
+    This runs on every rerun - clicking a tab, moving a slider - so it tracks
+    the last place recorded rather than checking the list. Keying off the list
+    would make "Clear history" appear broken: the current region would be
+    written straight back in on the very same run.
+    """
+    entry = history.canonical(region)
+    if st.session_state.get("last_recorded") == entry.key:
+        return
+    st.session_state["last_recorded"] = entry.key
+    updated = history.remember(_load_history(), entry)
+    st.session_state["history"] = updated
+    history.save(updated)
+
+
+def _recent_searches(slot) -> None:
+    """Previous searches as one-click buttons, plus a way to clear them."""
+    entries = _load_history()
+
+    with slot:
+        _draw_recent(entries)
+
+
+def _draw_recent(entries: list[history.Entry]) -> None:
+    if entries:
+        st.caption("Recent searches")
+        cols = st.columns(2)
+        for i, entry in enumerate(entries[:RECENT_SHOWN]):
+            if cols[i % 2].button(entry.label, key=f"hist_{entry.key}",
+                                  width="stretch",
+                                  help=f"{GEO_LABEL.get(entry.level, entry.level)}"):
+                st.session_state["query"] = entry.query
+                st.rerun()
+        if st.button("Clear history", key="clear_history", width="stretch"):
+            history.clear()
+            st.session_state["history"] = []
+            st.rerun()  # last_recorded still points at the open region, so it
+            # is not written straight back in on the rerun
+
+    # Examples are onboarding aids, so they step aside once there is history
+    # of your own - still one click away in the expander.
+    with st.expander("Examples", expanded=not entries):
+        cols = st.columns(2)
+        for i, example in enumerate(EXAMPLES):
+            if cols[i % 2].button(example, key=f"ex_{example}", width="stretch"):
+                st.session_state["query"] = example
+                st.rerun()
 
 
 def _theme_picker() -> None:
@@ -95,8 +154,14 @@ def _theme_picker() -> None:
     )
 
 
-def _sidebar() -> str:
-    """Search box plus one-click examples. Returns the query to render."""
+def _sidebar() -> tuple[str, "st.delta_generator.DeltaGenerator"]:
+    """Draw the sidebar.
+
+    Returns the active query and an empty container for the recent-search list.
+    The sidebar is drawn before the query is resolved, so the list is filled in
+    afterwards - otherwise the search you just ran would not appear in it until
+    your next interaction.
+    """
     with st.sidebar:
         st.markdown(f"## {APP_ICON} Market lookup")
 
@@ -110,12 +175,7 @@ def _sidebar() -> str:
             if st.form_submit_button("Search", type="primary", width="stretch"):
                 st.session_state["query"] = typed.strip()
 
-        st.caption("Or jump to an example:")
-        cols = st.columns(2)
-        for i, example in enumerate(EXAMPLES):
-            if cols[i % 2].button(example, key=f"ex_{example}", width="stretch"):
-                st.session_state["query"] = example
-                st.rerun()
+        recent_slot = st.container()
 
         st.divider()
         _theme_picker()
@@ -146,7 +206,7 @@ def _sidebar() -> str:
         st.divider()
         st.caption("Data: Zillow Research · US Census ACS · FRED · BLS")
 
-    return st.session_state.get("query", DEFAULT_QUERY)
+    return st.session_state.get("query", DEFAULT_QUERY), recent_slot
 
 
 def _resolve(query: str):
@@ -296,16 +356,20 @@ def main() -> None:
     # palette to use before anything renders.
     charts.use_theme(_active_theme())
 
-    query = _sidebar()
+    query, recent_slot = _sidebar()
 
     st.title("US Real Estate Market Dashboard")
     st.caption("Home prices, rents, supply and the local conditions behind them "
                "— built entirely on free, open data.")
 
     if _refresh_screen():
+        _recent_searches(recent_slot)
         return
 
     region = _resolve(query)
+    if region is not None:
+        _remember(region)
+    _recent_searches(recent_slot)
 
     tabs = st.tabs(["📊 Market overview", "🔥 National scanner",
                     "🏘️ Livability", "⚖️ Compare", "🌐 Macro", "ℹ️ Sources"])

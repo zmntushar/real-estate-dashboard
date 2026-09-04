@@ -81,6 +81,21 @@ BLS. Crime if you supply a key.
 **Macro** — mortgage rates, Case-Shiller, median US sale price, housing starts,
 months' supply, unemployment.
 
+## Searching
+
+The sidebar remembers where you have been. Every search that resolves is added
+to **Recent searches** as a one-click button, newest first, and **Clear history**
+wipes the list.
+
+History is stored in `data/search_history.json` rather than session state, so it
+survives restarts. It is gitignored — it is a record of what you looked at.
+Entries are saved in canonical form (`Austin, TX`, not whatever you typed), so
+replaying one lands on the same place without going through disambiguation
+again, and a repeat search moves to the front instead of duplicating.
+
+The example buttons collapse into an expander once you have history of your
+own; they are there to seed the first search.
+
 ## Appearance
 
 The sidebar has a **Light / Dark / System** control. System follows the
@@ -105,16 +120,15 @@ floor against the background it is drawn on.
 | Violent and property crime | [FBI Crime Data Explorer](https://cde.ucr.cjis.gov) | state, monthly | free, optional |
 
 For crime, get a free key at <https://api.data.gov/signup/>, then either paste
-it into the sidebar (lasts for the session) or copy
-`.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and fill it in:
+it into the sidebar (lasts for the session) or create `.streamlit/secrets.toml`
+containing:
 
 ```toml
 FBI_API_KEY = "your-key-here"
 ```
 
-`secrets.toml` is gitignored; the `.example` is not, so put the real key in the
-copy rather than editing the template. Streamlit finds the file relative to the
-working directory, which `start_app.bat` sets for you.
+That file is gitignored, so the key stays out of the repository. Streamlit finds
+it relative to the working directory, which `start_app.bat` sets for you.
 
 Crime is shown on the **Livability** tab as the trailing 12-month offence rate
 per 100,000 residents, state against the national average. It is the only
@@ -132,6 +146,7 @@ src/redash/
   config.py               source URLs, metric registry, constants
   cache.py                disk cache (Parquet/JSON) with retry and stale fallback
   geo.py                  free-text query -> Zillow region + Census GEOID + county FIPS
+  history.py              recent searches, persisted to disk
   refresh.py              cache warm-up: dataset registry + progress events
   analytics.py            growth, CAGR, affordability, rent yield, momentum score
   sources/

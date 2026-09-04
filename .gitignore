@@ -6,3 +6,6 @@ data/cache/
 .env
 .ipynb_checkpoints/
 .pytest_cache/
+
+# personal search history
+data/search_history.json
