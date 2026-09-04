@@ -261,3 +261,50 @@ def test_charts_render_under_both_themes() -> None:
         assert charts.palette().template == expected
 
     charts.use_theme("light")
+
+
+# --- launcher port selection ----------------------------------------------
+def test_free_port_helper_skips_a_port_in_use() -> None:
+    """A port held the way a server holds it must not be reported free.
+
+    Streamlit listens on [::]. On Windows that socket is v6-only by default, so
+    probing 127.0.0.1 alone reports the port free while it is actually taken -
+    which is what made the launcher die instead of moving to the next port.
+    """
+    import socket
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import find_free_port as ffp
+
+    family = socket.AF_INET6 if socket.has_ipv6 else socket.AF_INET
+    host = "::" if socket.has_ipv6 else "0.0.0.0"
+    holder = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        holder.bind((host, 0))
+        holder.listen(64)  # a real server keeps accepting; do not starve it
+        taken = holder.getsockname()[1]
+
+        assert not ffp.is_free(taken), f"port {taken} is held but reported free"
+
+        chosen = ffp.first_free(taken, 25)
+        assert chosen is not None
+        assert chosen != taken, "should have moved past the port in use"
+        assert chosen > taken
+    finally:
+        holder.close()
+
+
+def test_free_port_helper_accepts_an_unused_port() -> None:
+    import socket
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import find_free_port as ffp
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("0.0.0.0", 0))
+        spare = probe.getsockname()[1]
+    # released again, so it should now read as free
+    assert ffp.is_free(spare)
+    assert ffp.first_free(spare, 5) == spare

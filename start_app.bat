@@ -62,24 +62,40 @@ if "!SETUP!"=="1" (
     )
 )
 
+REM ---------- pick a port that is actually free --------------------
+REM Another copy of the dashboard, or anything else sitting on 8501, would
+REM otherwise stop the launch dead. Move to the next free port instead.
+set "PORTFILE=%TEMP%\_redash_port.txt"
+set "CHOSEN=%PORT%"
+"%PY%" "%HERE%scripts\find_free_port.py" %PORT% > "%PORTFILE%" 2>nul
+if exist "%PORTFILE%" set /p CHOSEN=<"%PORTFILE%"
+del "%PORTFILE%" >nul 2>&1
+if not defined CHOSEN set "CHOSEN=%PORT%"
+
+if not "%CHOSEN%"=="%PORT%" (
+    echo.
+    echo   Port %PORT% is already in use - starting on %CHOSEN% instead.
+    set "PORT=%CHOSEN%"
+)
+
 REM ---------- launch ----------------------------------------------
 echo.
 echo ==================================================================
 echo   Starting the Real Estate Dashboard
 echo.
-echo   It will open in your browser at  http://localhost:%PORT%
+echo   It will open in your browser at  http://localhost:!PORT!
 echo   Leave this window open while you use it.
 echo   Press Ctrl+C here to stop.
 echo ==================================================================
 echo.
 
-"%PY%" -m streamlit run "%HERE%app.py" --server.port %PORT% !ARGS!
+"%PY%" -m streamlit run "%HERE%app.py" --server.port !PORT! !ARGS!
 set "RC=%ERRORLEVEL%"
 
 if not "%RC%"=="0" (
     echo.
     echo [X] Streamlit exited with code %RC%.
-    echo     If the port is already in use, try:  start_app.bat --port 8600
+    echo     To choose a port yourself, run:  start_app.bat --port 8600
     goto fail
 )
 

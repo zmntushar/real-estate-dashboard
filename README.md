@@ -26,7 +26,10 @@ touches nothing else on the machine.
 | `install.bat --dev` | The same, plus the test dependencies. |
 | `install.bat --clean` | Delete `.venv\` and rebuild from scratch. Use this if an upgrade ever breaks something. |
 | `start_app.bat` | Open the dashboard. |
-| `start_app.bat --port 8600` | Use a different port if 8501 is taken. |
+| `start_app.bat --port 8600` | Start on a specific port. |
+
+If port 8501 is already busy — another copy of the dashboard, or anything else
+— the launcher moves to the next free port and says so, rather than failing.
 
 **Updates are handled for you.** `install.bat` always installs with `--upgrade`,
 so re-running it pulls in newer releases of Streamlit, pandas and the rest.
@@ -113,6 +116,7 @@ FBI_API_KEY = "your-key-here"
 ```
 install.bat               one-click setup and updater
 start_app.bat             one-click launcher, self-healing
+scripts/find_free_port.py  picks a free port so a busy 8501 is not fatal
 app.py                    Streamlit entrypoint: sidebar search, tabs
 src/redash/
   config.py               source URLs, metric registry, constants
