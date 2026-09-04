@@ -102,14 +102,24 @@ floor against the background it is drawn on.
 | Income, education, poverty, tenure, commute, age | US Census ACS via [Census Reporter](https://censusreporter.org) | ZIP, city, county, metro, state | none |
 | Mortgage rates, Case-Shiller, housing starts, months' supply | [FRED](https://fred.stlouisfed.org) | national | none |
 | Unemployment | [BLS](https://www.bls.gov/developers/) Local Area Unemployment Statistics | county, monthly | none |
-| Violent and property crime | [FBI Crime Data Explorer](https://cde.ucr.cjis.gov) | state, annual | free, optional |
+| Violent and property crime | [FBI Crime Data Explorer](https://cde.ucr.cjis.gov) | state, monthly | free, optional |
 
-For crime, get a free key at <https://api.data.gov/signup/> and paste it into
-the sidebar, or add it to `.streamlit/secrets.toml`:
+For crime, get a free key at <https://api.data.gov/signup/>, then either paste
+it into the sidebar (lasts for the session) or copy
+`.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and fill it in:
 
 ```toml
 FBI_API_KEY = "your-key-here"
 ```
+
+`secrets.toml` is gitignored; the `.example` is not, so put the real key in the
+copy rather than editing the template. Streamlit finds the file relative to the
+working directory, which `start_app.bat` sets for you.
+
+Crime is shown on the **Livability** tab as the trailing 12-month offence rate
+per 100,000 residents, state against the national average. It is the only
+indicator there that is not local to the searched place — the free API publishes
+at state level.
 
 ## How it is put together
 

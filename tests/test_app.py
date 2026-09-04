@@ -308,3 +308,86 @@ def test_free_port_helper_accepts_an_unused_port() -> None:
     # released again, so it should now read as free
     assert ffp.is_free(spare)
     assert ffp.first_free(spare, 5) == spare
+
+
+# --- FBI crime parsing -----------------------------------------------------
+def _fake_cde_payload() -> dict:
+    """The shape the summarized endpoint actually returns."""
+    months = [f"{m:02d}-{y}" for y in (2023, 2024) for m in range(1, 13)]
+    return {
+        "offenses": {
+            "rates": {
+                "Texas Offenses": {m: 30.0 for m in months},
+                "Texas Clearances": {m: 12.0 for m in months},
+                "United States Offenses": {m: 25.0 for m in months},
+                "United States Clearances": {m: 11.0 for m in months},
+            }
+        }
+    }
+
+
+def test_crime_request_uses_month_year_dates(monkeypatch) -> None:
+    """The API rejects bare years with HTTP 400 - dates must be MM-YYYY."""
+    import re
+
+    from redash.sources import fbi
+
+    seen: dict = {}
+
+    def fake_json(url, ttl_hours=0, *, params=None, **kwargs):
+        seen.update(params or {})
+        return _fake_cde_payload()
+
+    monkeypatch.setattr(fbi, "cached_json", fake_json)
+    fbi.state_rates.clear()
+    fbi.state_rates("TX", "violent-crime", "dummy-key")
+
+    for field in ("from", "to"):
+        assert re.fullmatch(r"\d{2}-\d{4}", seen[field]), (
+            f"{field}={seen[field]!r} is not MM-YYYY")
+
+
+def test_crime_rows_survive_parsing(monkeypatch) -> None:
+    """Month keys must not be parsed as integers - that silently dropped every row."""
+    from redash.sources import fbi
+
+    monkeypatch.setattr(fbi, "cached_json",
+                        lambda *a, **k: _fake_cde_payload())
+    fbi.state_rates.clear()
+    df = fbi.state_rates("TX", "violent-crime", "dummy-key")
+
+    assert df is not None and not df.empty
+    assert set(df["area"]) == {"Texas", "United States"}
+    assert set(df["measure"]) == {"Offenses", "Clearances"}
+    assert len(df) == 24 * 4
+
+
+def test_crime_separates_state_from_nation(monkeypatch) -> None:
+    """Scopes are '<area> <measure>', so a '!= United States' filter never matched."""
+    from redash.sources import fbi
+
+    monkeypatch.setattr(fbi, "cached_json",
+                        lambda *a, **k: _fake_cde_payload())
+    fbi.state_rates.clear()
+    df = fbi.state_rates("TX", "violent-crime", "dummy-key")
+
+    state, nation = fbi.areas(df)
+    assert state == "Texas"
+    assert nation == "United States"
+
+    local = fbi.trailing_12m(df, state)
+    national = fbi.trailing_12m(df, nation)
+    assert local is not None and national is not None
+    # 12 months at 30 per month is an annual rate of 360, not 30.
+    assert local.iloc[-1] == pytest.approx(360.0)
+    assert national.iloc[-1] == pytest.approx(300.0)
+    # Clearances must not leak into the offence series.
+    assert (local > national).all()
+
+
+def test_crime_handles_an_empty_response(monkeypatch) -> None:
+    from redash.sources import fbi
+
+    monkeypatch.setattr(fbi, "cached_json", lambda *a, **k: {"offenses": {}})
+    fbi.state_rates.clear()
+    assert fbi.state_rates("TX", "violent-crime", "dummy-key") is None

@@ -513,7 +513,7 @@ def _render_crime(region: Region) -> None:
     key = fbi.api_key()
     state = region.state if region.state and len(region.state) == 2 else None
     if not state:
-        st.caption("Crime statistics are keyed to states; no state resolved here.")
+        st.caption("Crime statistics are published by state; no state resolved here.")
         return
     if not key:
         st.info("Add a free FBI Crime Data Explorer key in the sidebar to show "
@@ -521,26 +521,52 @@ def _render_crime(region: Region) -> None:
                 "app needs no key at all.")
         return
 
-    frames = []
-    for offense in ("violent-crime", "property-crime"):
-        df = fbi.state_rates(state, offense, key)
-        if df is not None and not df.empty:
-            frames.append((fbi.OFFENSES[offense], df))
-    if not frames:
-        st.caption("The FBI API returned no data for this state — the key may be "
-                   "invalid or the series unpublished.")
+    with st.spinner("Loading crime rates (FBI Crime Data Explorer)…"):
+        loaded = [(fbi.OFFENSES[o], fbi.state_rates(state, o, key))
+                  for o in ("violent-crime", "property-crime")]
+    loaded = [(name, df) for name, df in loaded if df is not None and not df.empty]
+
+    if not loaded:
+        st.caption("The FBI API returned no data for this state. The key may be "
+                   "invalid, or the series may not be published yet.")
         return
 
-    cols = st.columns(len(frames))
-    for col, (name, df) in zip(cols, frames):
-        local = df[df["scope"] != "United States"] if "scope" in df else df
-        s = pd.Series(local["rate"].to_numpy(),
-                      index=pd.to_datetime(local["year"], format="%Y"))
+    cols = st.columns(len(loaded))
+    for col, (name, df) in zip(cols, loaded):
+        area, nation = fbi.areas(df)
+        local = fbi.trailing_12m(df, area) if area else None
+        national = fbi.trailing_12m(df, nation) if nation else None
+        if local is None:
+            col.caption(f"No {name.lower()} series for {state}.")
+            continue
+        benchmarks = [(nation, national)] if national is not None else []
         col.plotly_chart(
-            charts.simple_line(s.sort_index(), f"{name} rate — {state}",
-                               y_suffix=" /100k"),
+            # main series against a benchmark - the same shape as the price
+            # charts, so the two read the same way.
+            charts.price_history(local, area or state, benchmarks,
+                                 title=f"{name} rate — {area or state}",
+                                 y_prefix=""),
             width="stretch")
-    st.caption("FBI Crime Data Explorer, offences per 100,000 people, state level.")
+
+    latest = []
+    for name, df in loaded:
+        area, nation = fbi.areas(df)
+        local = fbi.trailing_12m(df, area) if area else None
+        national = fbi.trailing_12m(df, nation) if nation else None
+        if local is None:
+            continue
+        gap = ""
+        if national is not None and len(national):
+            diff = (local.iloc[-1] / national.iloc[-1] - 1.0) * 100.0
+            gap = (f", {abs(diff):.0f}% {'above' if diff >= 0 else 'below'} "
+                   f"the national rate")
+        latest.append(f"**{name}** {local.iloc[-1]:,.0f} per 100k{gap}")
+    if latest:
+        st.caption(" · ".join(latest))
+
+    st.caption("FBI Crime Data Explorer. Offences per 100,000 residents over "
+               "the trailing 12 months, reported at state level — so this is "
+               "the state trend, not a figure for this ZIP or city.")
 
 
 # ---------------------------------------------------------------------------
