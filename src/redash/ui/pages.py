@@ -64,8 +64,9 @@ def _resolve_metric(region: Region, metric: str,
 # 1. Market overview
 # ---------------------------------------------------------------------------
 def render_overview(region: Region) -> None:
-    peers = peer_regions(region)
-    zhvi = zillow.series_for("zhvi", region.level, region.region_id)
+    with st.spinner(f"Loading Zillow home value history for {region.name}…"):
+        peers = peer_regions(region)
+        zhvi = zillow.series_for("zhvi", region.level, region.region_id)
 
     if zhvi is None or zhvi.empty:
         st.warning(f"Zillow does not publish a home value index for "
@@ -90,8 +91,9 @@ def render_overview(region: Region) -> None:
         _state_badge(chg_1y, chg_3m)
 
     # --- headline price KPIs -------------------------------------------------
-    msp, msp_src = _resolve_metric(region, "median_sale_price", peers)
-    zori, zori_src = _resolve_metric(region, "zori", peers)
+    with st.spinner("Loading sale prices and rents…"):
+        msp, msp_src = _resolve_metric(region, "median_sale_price", peers)
+        zori, zori_src = _resolve_metric(region, "zori", peers)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Typical home value", usd(zhvi.iloc[-1]), _delta(chg_1y),
@@ -118,9 +120,10 @@ def render_overview(region: Region) -> None:
               border=True)
 
     # --- momentum KPIs -------------------------------------------------------
-    dtp, dtp_src = _resolve_metric(region, "days_to_pending", peers)
-    cuts, cuts_src = _resolve_metric(region, "price_cuts", peers)
-    inv, inv_src = _resolve_metric(region, "inventory", peers)
+    with st.spinner("Loading inventory, days on market and price cuts…"):
+        dtp, dtp_src = _resolve_metric(region, "days_to_pending", peers)
+        cuts, cuts_src = _resolve_metric(region, "price_cuts", peers)
+        inv, inv_src = _resolve_metric(region, "inventory", peers)
 
     d1, d2, d3, d4 = st.columns(4)
     d1.metric("1-month change", pct(chg_1m, signed=True), border=True)
@@ -146,10 +149,11 @@ def render_overview(region: Region) -> None:
     left, right = st.columns([3, 2])
     with left:
         bench = []
-        for level, name, rid in peers:
-            s = _peer_series(level, rid, "zhvi")
-            if s is not None:
-                bench.append((name, s))
+        with st.spinner("Loading benchmark markets…"):
+            for level, name, rid in peers:
+                s = _peer_series(level, rid, "zhvi")
+                if s is not None:
+                    bench.append((name, s))
         st.plotly_chart(
             charts.price_history(zhvi, region.label, bench,
                                  title="Typical home value over time"),
@@ -200,8 +204,9 @@ def render_overview(region: Region) -> None:
 
     # --- affordability -------------------------------------------------------
     st.markdown("#### Affordability at today's rates")
-    rate = fred.mortgage_rate_now()
-    profile = census.profile(region.census_geoid) if region.census_geoid else {}
+    with st.spinner("Loading mortgage rates (FRED) and local income (Census)…"):
+        rate = fred.mortgage_rate_now()
+        profile = census.profile(region.census_geoid) if region.census_geoid else {}
     income = profile.get("median_household_income")
 
     a1, a2 = st.columns([1, 2])
@@ -283,7 +288,8 @@ def render_scanner(region: Region | None) -> None:
                                                  "momentum": "Momentum score"}[k],
                           key="scan_window")
 
-    with st.spinner(f"Loading {level.lower()}-level market data…"):
+    with st.spinner(f"Loading Zillow home values, rents and market friction "
+                    f"for every {GEO_LABEL.get(level, level).lower()}…"):
         table = zillow.combined_snapshot(level)
 
     if table.empty:
@@ -420,7 +426,8 @@ def render_livability(region: Region) -> None:
                 "Search a ZIP or a city name to see this panel.")
         return
 
-    profile = census.profile(region.census_geoid)
+    with st.spinner("Loading Census demographics (ACS)…"):
+        profile = census.profile(region.census_geoid)
     if not profile:
         st.warning("Census did not return a profile for this geography.")
         return
@@ -433,16 +440,19 @@ def render_livability(region: Region) -> None:
     parents = [(rel, node) for rel, node in region.parents.items()
                if rel in ("county", "CBSA", "state", "nation")]
     peer_profiles: list[tuple[str, dict]] = [(region.name, profile)]
-    for rel, node in parents:
-        gid = node.get("geoid")
-        if not gid:
-            continue
-        p = census.profile(gid)
-        if p:
-            peer_profiles.append((_short_geo_name(rel, node.get("name", rel)), p))
+    with st.spinner("Loading Census data for the surrounding county, metro and state…"):
+        for rel, node in parents:
+            gid = node.get("geoid")
+            if not gid:
+                continue
+            p = census.profile(gid)
+            if p:
+                peer_profiles.append(
+                    (_short_geo_name(rel, node.get("name", rel)), p))
 
     if len(peer_profiles) > 1:
         st.markdown("#### How it compares")
+
         indicators = [
             ("median_household_income", "Median household income", "$", ""),
             ("bachelors_plus_pct", "Bachelor's degree or higher", "", "%"),
@@ -481,14 +491,15 @@ def render_livability(region: Region) -> None:
     # --- labour market -------------------------------------------------------
     fips = region.county_fips
     if fips:
-        series = bls.unemployment_rate(*fips)
+        with st.spinner("Loading county unemployment (BLS)…"):
+            series = bls.unemployment_rate(*fips)
         county_name = (region.parents.get("county") or {}).get("name", "county")
         if series is not None and not series.empty:
             st.markdown("#### Local labour market")
             st.plotly_chart(
                 charts.simple_line(series,
                                    f"Unemployment rate — {county_name}",
-                                   y_suffix="%", color=charts.PRIMARY),
+                                   y_suffix="%"),
                 width="stretch")
             st.caption(f"Bureau of Labor Statistics, county level. Latest: "
                        f"{series.iloc[-1]:.1f}% ({month(series.index[-1])}).")
@@ -570,10 +581,12 @@ def render_compare(region: Region | None) -> None:
         return
 
     series_map: dict[str, pd.Series] = {}
-    for _, row in rows.iterrows():
-        s = _peer_series(level, int(row["RegionID"]), metric)
-        if s is not None:
-            series_map[str(row["label"])] = s
+    with st.spinner(f"Loading {ZILLOW_FILES[metric]['label'].lower()} for "
+                    f"{len(rows)} markets…"):
+        for _, row in rows.iterrows():
+            s = _peer_series(level, int(row["RegionID"]), metric)
+            if s is not None:
+                series_map[str(row["label"])] = s
     if not series_map:
         st.warning("No data for those markets.")
         return
@@ -632,6 +645,9 @@ def render_macro() -> None:
     st.subheader("National backdrop")
     st.caption("The rate and supply environment every local market sits inside. "
                "Source: FRED, Federal Reserve Bank of St. Louis.")
+
+    with st.spinner("Loading macro series from FRED…"):
+        fred.series("MORTGAGE30US")  # warms every frequency bundle up front
 
     tiles = [("MORTGAGE30US", "%"), ("CSUSHPINSA", ""), ("MSPUS", "$"),
              ("MSACSR", " mo")]

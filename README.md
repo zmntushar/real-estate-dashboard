@@ -78,6 +78,19 @@ BLS. Crime if you supply a key.
 **Macro** — mortgage rates, Case-Shiller, median US sale price, housing starts,
 months' supply, unemployment.
 
+## Appearance
+
+The sidebar has a **Light / Dark / System** control. System follows the
+operating system setting, and the choice is remembered in the browser and
+mirrored into the URL (`?theme=Dark`) so it survives a reload.
+
+Dark mode re-colours the charts too, not just the page. The dark palette is a
+separate set of accents rather than the light one dimmed — dimming is precisely
+what makes a dark theme look washed out — so the teal, green and red all gain
+lightness against the dark ground. A test asserts this: every shared accent
+must be brighter in dark than in light, and every accent must clear a contrast
+floor against the background it is drawn on.
+
 ## Data sources
 
 | Data | Source | Geography | Key |
@@ -105,6 +118,7 @@ src/redash/
   config.py               source URLs, metric registry, constants
   cache.py                disk cache (Parquet/JSON) with retry and stale fallback
   geo.py                  free-text query -> Zillow region + Census GEOID + county FIPS
+  refresh.py              cache warm-up: dataset registry + progress events
   analytics.py            growth, CAGR, affordability, rent yield, momentum score
   sources/
     zillow.py             market data; wide monthly CSVs -> tidy series
@@ -113,7 +127,7 @@ src/redash/
     bls.py                county unemployment
     fbi.py                crime (optional key)
   ui/
-    charts.py             Plotly builders, one shared palette and template
+    charts.py             Plotly builders; light and dark palettes
     format.py             number and date formatting
     pages.py              one render_* function per tab
 tests/test_app.py         AppTest integration checks + data-layer unit tests
@@ -121,7 +135,18 @@ tests/test_app.py         AppTest integration checks + data-layer unit tests
 
 Source files are cached on disk under `data/cache/` as Parquet, refreshed daily.
 Zillow publishes monthly, so this costs nothing in freshness and makes reloads
-instant. "Refresh all data" in the sidebar clears it.
+instant.
+
+**Refreshing.** *Data cache* in the sidebar re-downloads everything, showing a
+progress bar that names each dataset as it arrives ("Typical asking rent (ZORI)
+— metro areas · 0.6 MB") and a running log of what has completed. Two scopes are
+offered, since ZIP and county files are by far the largest: *Core markets*
+(metro, state, city — 25 datasets, roughly 70 MB) and *Everything* (35 datasets).
+A source that fails is reported and skipped rather than abandoning the pass, and
+the app keeps using whatever older copy it still holds.
+
+Cold starts are narrated too: each panel says what it is fetching — Zillow price
+history, Census demographics, BLS unemployment — instead of pausing silently.
 
 ## Reading the numbers
 

@@ -1,11 +1,50 @@
-# Local desktop defaults. headless is left unset so Streamlit opens the
-# browser automatically when start_app.bat runs it.
+# Light and dark palettes. `base` is deliberately not set: pinning it would
+# force one theme and disable the Light / Dark / System switcher.
+
+[theme]
+primaryColor = "#0e9aa7"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+
+# ----------------------------- light ---------------------------------
+[theme.light]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f5f7"
+textColor = "#152230"
+borderColor = "#dae2e9"
+dataframeHeaderBackgroundColor = "#eef3f6"
+linkColor = "#0b7d88"
+primaryColor = "#0e9aa7"
+greenColor = "#1f9d55"
+redColor = "#d64545"
+orangeColor = "#b87516"
+
+[theme.light.sidebar]
+backgroundColor = "#f7f9fb"
+borderColor = "#e2e9ee"
+
+# ------------------------------ dark ----------------------------------
+# Deep blue-slate rather than grey, with accents pushed brighter than their
+# light-mode counterparts. Dimming a light palette is what makes dark themes
+# look washed out; these are re-picked for contrast against a dark ground.
+[theme.dark]
+backgroundColor = "#0e1720"
+secondaryBackgroundColor = "#18242f"
+textColor = "#e9f0f6"
+borderColor = "#2c3b4a"
+dataframeHeaderBackgroundColor = "#1d2b38"
+linkColor = "#4bd4e2"
+primaryColor = "#2ec7d4"
+greenColor = "#3ddc84"
+redColor = "#ff6f6f"
+orangeColor = "#ffab40"
+
+[theme.dark.sidebar]
+backgroundColor = "#111c26"
+borderColor = "#243342"
+
 [browser]
 gatherUsageStats = false
 
 [server]
 port = 8501
-
-[theme]
-base = "light"
-primaryColor = "#0e9aa7"
