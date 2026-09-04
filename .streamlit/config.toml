@@ -1,9 +1,10 @@
-[server]
-headless = true
-port = 8501
-
+# Local desktop defaults. headless is left unset so Streamlit opens the
+# browser automatically when start_app.bat runs it.
 [browser]
 gatherUsageStats = false
+
+[server]
+port = 8501
 
 [theme]
 base = "light"

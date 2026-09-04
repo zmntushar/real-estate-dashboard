@@ -11,17 +11,49 @@ optional crime panel needs a key at all.
 
 ## Quick start
 
+Double-click **`install.bat`**, then double-click **`start_app.bat`**. That is
+the whole setup — the first script builds the environment, the second opens the
+dashboard in your browser.
+
+You only need Python 3.10 or newer installed
+([python.org/downloads](https://www.python.org/downloads/), tick *Add python.exe
+to PATH*). `install.bat` creates its own virtual environment in `.venv\` and
+touches nothing else on the machine.
+
+| Command | What it does |
+|---|---|
+| `install.bat` | Create the environment, or update every package to the newest version allowed by `requirements.txt`. Safe to re-run any time. |
+| `install.bat --dev` | The same, plus the test dependencies. |
+| `install.bat --clean` | Delete `.venv\` and rebuild from scratch. Use this if an upgrade ever breaks something. |
+| `start_app.bat` | Open the dashboard. |
+| `start_app.bat --port 8600` | Use a different port if 8501 is taken. |
+
+**Updates are handled for you.** `install.bat` always installs with `--upgrade`,
+so re-running it pulls in newer releases of Streamlit, pandas and the rest.
+`start_app.bat` records a hash of `requirements.txt` after each install and
+compares it on every launch — if the file has changed, or the environment is
+missing or broken, it runs `install.bat` itself before starting. So editing
+`requirements.txt` and double-clicking `start_app.bat` is enough.
+
+After installing, `install.bat` compiles the sources and imports every
+dependency. If a future release of a library breaks the app, it says so and
+points at `install.bat --clean` rather than leaving you with a half-working
+environment.
+
+<details>
+<summary>Prefer the command line, or not on Windows?</summary>
+
 ```bash
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install --upgrade -r requirements.txt   # Windows
+# .venv/bin/python -m pip install --upgrade -r requirements.txt         # macOS / Linux
+
 .venv/Scripts/python.exe -m streamlit run app.py
 ```
 
-If you are setting up from scratch:
-
-```bash
-python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt
-```
-
-The app opens at <http://localhost:8501>.
+The batch files are Windows conveniences; the app itself is plain Python and
+runs anywhere.
+</details>
 
 ## What it shows
 
@@ -66,6 +98,8 @@ FBI_API_KEY = "your-key-here"
 ## How it is put together
 
 ```
+install.bat               one-click setup and updater
+start_app.bat             one-click launcher, self-healing
 app.py                    Streamlit entrypoint: sidebar search, tabs
 src/redash/
   config.py               source URLs, metric registry, constants
@@ -113,6 +147,7 @@ instant. "Refresh all data" in the sidebar clears it.
 ## Tests
 
 ```bash
+install.bat --dev
 .venv/Scripts/python.exe -m pytest
 ```
 
